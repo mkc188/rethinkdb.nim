@@ -1,5 +1,10 @@
 import asyncnet, strutils, logging, json, struct
 import scram/client
+import asyncdispatch, net, os, openssl
+
+var asyncSocket: AsyncSocket
+var socket: Socket
+let serverPublicKey = "./cert.pem"
 
 when not compileOption("threads"):
   import asyncdispatch
@@ -113,9 +118,28 @@ proc newRethinkClient*(address = "127.0.0.1", port = Port(28015), db: string = "
   result.address = address
   result.port = port
   when not compileOption("threads"):
-    result.sock = newAsyncSocket()
+
+    if not fileExists(serverPublicKey): 
+      echo "[-] could not find server's public key at: ", serverPublicKey
+      quit()
+    asyncSocket = newAsyncSocket()  
+    var ctx = newContext(verifyMode = CVerifyPeer)
+    discard SSL_CTX_load_verify_locations(ctx.context, "cert.pem", "") # we gonna trust our self signed certificat
+    wrapSocket(ctx, asyncSocket) # enables SSL for this socket.
+
+    # result.sock = newAsyncSocket()
+    result.sock = asyncSocket
   else:
-    result.sock = newSocket()
+
+    if not fileExists(serverPublicKey): 
+      echo "[-] could not find server's public key at: ", serverPublicKey
+      quit()
+    socket = newSocket()  
+    var ctx = newContext(verifyMode = CVerifyPeer)
+    discard SSL_CTX_load_verify_locations(ctx.context, "cert.pem", "") # we gonna trust our self signed certificat
+    wrapSocket(ctx, socket) # enables SSL for this socket.
+
+    result.sock = socket
   result.sockConnected = false
   result.queryToken = 0
 
